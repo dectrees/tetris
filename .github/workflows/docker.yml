@@ -22,6 +22,12 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
+      # Registers binfmt handlers so buildx can cross-build for the non-native
+      # architecture. Not strictly needed for this COPY-only Dockerfile, but it
+      # keeps the job working if a RUN step is ever added.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -61,6 +67,9 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          # Publishes a multi-arch manifest so the image runs natively on both
+          # amd64 servers and Apple Silicon / ARM hosts, with no --platform flag.
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

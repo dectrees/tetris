@@ -23,6 +23,8 @@ Then open <http://localhost:8080>.
 
 nginx serves the file directly, so the image is ~65 MB and starts in about a second. It includes a `HEALTHCHECK`, so `docker ps` reports the container's status.
 
+The published manifest covers both `linux/amd64` and `linux/arm64`, so no `--platform` flag is needed on Apple Silicon or ARM servers.
+
 To build it yourself:
 
 ```sh
