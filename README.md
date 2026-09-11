@@ -11,6 +11,34 @@ python3 -m http.server 8000
 # then visit http://localhost:8000
 ```
 
+## Run with Docker
+
+The image is built and published to Docker Hub automatically by [`.github/workflows/docker.yml`](.github/workflows/docker.yml) — on every push to `main` (tagged `latest` and `sha-<short>`) and on `v*` release tags (tagged with the version).
+
+```sh
+docker run --rm -p 8080:80 <your-dockerhub-username>/tetris
+```
+
+Then open <http://localhost:8080>.
+
+nginx serves the file directly, so the image is ~65 MB and starts in about a second. It includes a `HEALTHCHECK`, so `docker ps` reports the container's status.
+
+To build it yourself:
+
+```sh
+docker build -t tetris .
+docker run --rm -p 8080:80 tetris
+```
+
+### Required repository secrets
+
+| Secret | Value |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | Docker Hub username |
+| `DOCKERHUB_TOKEN` | Docker Hub access token with read/write permission |
+
+The pipeline pulls the published image back down and checks that it serves the game, so a green run means a playable image rather than merely a pushed one.
+
 ## Controls
 
 | Key | Action |

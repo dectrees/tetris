@@ -1,0 +1,90 @@
+name: Build and push image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Never let two publishes race for the same tag
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Build, push, and verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are repository secrets
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Tags are computed here rather than via metadata-action so the verify
+      # step below can pull back the exact tag that was just published.
+      - name: Compute image tags
+        id: tags
+        env:
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/tetris
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(printf '%s' "$GITHUB_SHA" | cut -c1-7)"
+          SHA_TAG="${IMAGE}:sha-${SHORT_SHA}"
+          echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
+
+          case "$GITHUB_REF" in
+            refs/heads/main) TAGS="${IMAGE}:latest,${SHA_TAG}" ;;
+            refs/tags/v*)    TAGS="${IMAGE}:${GITHUB_REF#refs/tags/v},${SHA_TAG}" ;;
+            *)               TAGS="${SHA_TAG}" ;;
+          esac
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Derive labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/tetris
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Pull the published image back down and confirm it actually serves the
+      # game, so a green build means a playable image rather than just a pushed one.
+      - name: Verify the image serves the game
+        env:
+          SHA_TAG: ${{ steps.tags.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          docker run -d --name tetris-smoke -p 8080:80 "$SHA_TAG"
+          trap 'docker rm -f tetris-smoke >/dev/null 2>&1 || true' EXIT
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/ -o /tmp/served.html; then break; fi
+            sleep 1
+          done
+
+          curl -fsS http://localhost:8080/ -o /tmp/served.html
+          grep -q '<title>Tetris</title>' /tmp/served.html
+          grep -q 'id="board"'            /tmp/served.html
+          grep -q 'id="touch"'            /tmp/served.html
+          grep -q 'requestAnimationFrame' /tmp/served.html
+          echo "OK - ${SHA_TAG} serves the playable game"

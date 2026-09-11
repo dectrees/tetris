@@ -1,0 +1,6 @@
+# Only index.html is copied into the image, so keep the build context small
+.git
+.github
+README.md
+Dockerfile
+.dockerignore
